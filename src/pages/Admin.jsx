@@ -1,3 +1,4 @@
+import { autoFetchResult } from '../lib/sportsApi'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { SPORTS, AVATARS, getSport, fmtDate, fmtMoney, calcPoints, MONTHS_ES } from '../constants'
@@ -176,6 +177,166 @@ function UserRow({ u, showPw, onTogglePw, onToggleActive, onResetPw, notify }) {
           ) : (
             <button className="btn bt-ol-sm" onClick={() => setEditing(true)}>✏️ Cambiar clave</button>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ─── SUGGEST EVENTS FROM API ──────────────────────────────────────────────────
+function AdminEventSuggest({ notify, onCreated }) {
+  const [sport, setSport]       = useState('champions')
+  const [loading, setLoading]   = useState(false)
+  const [suggestions, setSuggs] = useState([])
+  const [adding, setAdding]     = useState({})
+  const [added, setAdded]       = useState({})
+
+  const fetch_ = async () => {
+    setLoading(true)
+    setSuggs([])
+    try {
+      const { fetchUpcomingEvents, leaguesForSport } = await import('../lib/sportsApi.js')
+      const ids = leaguesForSport(sport)
+      if (!ids.length) { notify('Liga sin soporte de API aún', 'er'); setLoading(false); return }
+      let all = []
+      for (const id of ids) {
+        const evs = await fetchUpcomingEvents(id)
+        all = [...all, ...evs]
+      }
+      // Filter only future events
+      const now = new Date()
+      const filtered = all
+        .filter(e => e.strHomeTeam && e.strAwayTeam && e.dateEvent)
+        .filter(e => new Date(e.dateEvent) >= now)
+        .sort((a, b) => new Date(a.dateEvent) - new Date(b.dateEvent))
+        .slice(0, 20)
+      setSuggs(filtered)
+      if (!filtered.length) notify('No hay próximos eventos disponibles en la API', 'er')
+    } catch(err) {
+      notify('Error consultando la API', 'er')
+    }
+    setLoading(false)
+  }
+
+  const addEvent = async (ev) => {
+    const key = ev.idEvent
+    setAdding(p => ({ ...p, [key]: true }))
+    const date = ev.dateEvent // yyyy-mm-dd
+    const time = ev.strTime ? ev.strTime.slice(0,5) : '20:00'
+    const startDt = new Date(`${date}T${time}:00Z`)
+    const closeDt = new Date(startDt.getTime() - 5 * 60 * 1000)
+    const evMonth = startDt.getMonth() + 1
+    const evYear  = startDt.getFullYear()
+
+    const { error } = await supabase.from('events').insert({
+      sport,
+      home:        ev.strHomeTeam,
+      away:        ev.strAwayTeam,
+      event_date:  date,
+      event_time:  time + ':00',
+      close_at:    closeDt.toISOString(),
+      note:        ev.strLeague || '',
+      event_month: evMonth,
+      event_year:  evYear,
+      status:      'upcoming',
+    })
+    if (error) notify('Error al agregar', 'er')
+    else {
+      setAdded(p => ({ ...p, [key]: true }))
+      notify(`✅ ${ev.strHomeTeam} vs ${ev.strAwayTeam} agregado`)
+      onCreated()
+    }
+    setAdding(p => ({ ...p, [key]: false }))
+  }
+
+  const sp = getSport(sport)
+
+  return (
+    <div className="fstack">
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <label className="fl-lbl">Liga</label>
+          <select className="sel" value={sport} onChange={e => { setSport(e.target.value); setSuggs([]) }}>
+            {[
+              ['champions',   '⭐ Champions League'],
+              ['premier',     '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League'],
+              ['liga_chilena','🇨🇱 Liga Chilena'],
+              ['nba',         '🏀 NBA'],
+              ['nfl',         '🏈 NFL'],
+              ['mundial',     '🌍 Mundial FIFA'],
+            ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div style={{ alignSelf: 'flex-end' }}>
+          <button className="btn bt-ol-gd" onClick={fetch_} disabled={loading} style={{ padding: '9px 14px', fontSize: 12 }}>
+            {loading ? '⏳ Buscando...' : '🔍 Buscar eventos'}
+          </button>
+        </div>
+      </div>
+
+      {suggestions.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 10,
+            color: 'rgba(255,255,255,.25)',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            marginBottom: 7,
+          }}>
+            {suggestions.length} eventos encontrados — click para agregar
+          </div>
+          {suggestions.map(ev => {
+            const key = ev.idEvent
+            const done = added[key]
+            return (
+              <div
+                key={key}
+                style={{
+                  background: done ? 'rgba(40,255,187,.05)' : '#1E1E1E',
+                  border: `1px solid ${done ? 'rgba(40,255,187,.2)' : '#2A2A2A'}`,
+                  borderRadius: 3,
+                  padding: '8px 11px',
+                  marginBottom: 5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    color: done ? '#28FFBB' : '#CCC',
+                  }}>
+                    {ev.strHomeTeam} vs {ev.strAwayTeam}
+                  </div>
+                  <div style={{
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    fontSize: 10,
+                    color: 'rgba(255,255,255,.28)',
+                    marginTop: 2,
+                  }}>
+                    {ev.dateEvent}{ev.strTime ? ` · ${ev.strTime.slice(0,5)}` : ''} · {ev.strLeague}
+                  </div>
+                </div>
+                {done
+                  ? <span style={{ color: '#28FFBB', fontSize: 13 }}>✓ Agregado</span>
+                  : (
+                    <button
+                      className="btn bt-gd-sm"
+                      onClick={() => addEvent(ev)}
+                      disabled={adding[key]}
+                    >
+                      {adding[key] ? '...' : '+ Agregar'}
+                    </button>
+                  )
+                }
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -385,6 +546,22 @@ function AdminEventList({ notify }) {
   const [resHome, setResHome] = useState('')
   const [resAway, setResAway] = useState('')
   const [saving, setSaving] = useState(false)
+  const [autoFetching, setAutoFetching] = useState({})
+
+  const autoResult = async (ev) => {
+    setAutoFetching(p => ({ ...p, [ev.id]: true }))
+    notify('Buscando resultado...', 'in')
+    const score = await autoFetchResult(ev)
+    if (!score) {
+      notify('No encontrado automáticamente. Ingrésalo manual.', 'er')
+    } else {
+      setResHome(score.home.toString())
+      setResAway(score.away.toString())
+      setResEv(ev)
+      notify(`Resultado encontrado: ${score.home}–${score.away} ✅`)
+    }
+    setAutoFetching(p => ({ ...p, [ev.id]: false }))
+  }
 
   const load = async () => {
     const { data } = await supabase
@@ -502,6 +679,11 @@ function AdminEventList({ notify }) {
                 {ev.status !== 'upcoming' && (
                   <button className="btn bt-gd-sm" onClick={() => openResult(ev)}>
                     {ev.result_home != null ? '✏️ Editar Resultado' : '🏁 Ingresar Resultado'}
+                  </button>
+                )}
+                {ev.status === 'closed' && ev.result_home == null && (
+                  <button className="btn bt-ol-gd" onClick={() => autoResult(ev)} disabled={autoFetching[ev.id]} style={{ fontSize: 10 }}>
+                    {autoFetching[ev.id] ? '⏳ Buscando...' : '🤖 Auto-resultado'}
                   </button>
                 )}
                 <button className="btn bt-rd" onClick={() => deleteEvent(ev)}>🗑</button>
@@ -752,16 +934,19 @@ export default function AdminPage({ notify }) {
           <div className="adm-sec">
             <div className="adm-tit">Crear Evento</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <button className={`btn ${evTab === 'suggest' ? 'bt-ol-gd' : 'bt-ol-sm'}`} onClick={() => setEvTab('suggest')}>
+                🤖 Sugeridos
+              </button>
               <button className={`btn ${evTab === 'single' ? 'bt-ol-gd' : 'bt-ol-sm'}`} onClick={() => setEvTab('single')}>
                 Individual
               </button>
               <button className={`btn ${evTab === 'bulk' ? 'bt-ol-gd' : 'bt-ol-sm'}`} onClick={() => setEvTab('bulk')}>
-                Masivo / Torneo
+                Masivo
               </button>
             </div>
-            {evTab === 'single'
-              ? <AdminEventSingle notify={notify} onCreated={() => setEvKey(k => k + 1)} />
-              : <AdminEventBulk   notify={notify} onCreated={() => setEvKey(k => k + 1)} />}
+            {evTab === 'suggest' && <AdminEventSuggest notify={notify} onCreated={() => setEvKey(k => k + 1)} />}
+            {evTab === 'single'  && <AdminEventSingle  notify={notify} onCreated={() => setEvKey(k => k + 1)} />}
+            {evTab === 'bulk'    && <AdminEventBulk    notify={notify} onCreated={() => setEvKey(k => k + 1)} />}
           </div>
 
           <div className="adm-sec">
