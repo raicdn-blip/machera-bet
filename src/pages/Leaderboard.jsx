@@ -12,7 +12,7 @@ export default function LeaderboardPage({ user }) {
   const now = new Date()
   const curMonth = now.getMonth() + 1
   const curYear  = now.getFullYear()
-  const pot      = playerCount * 10000
+  const pot      = playerCount * 5000
 
   useEffect(() => {
     let mounted = true
