@@ -1,4 +1,4 @@
-import { autoFetchResult } from '../lib/sportsApi'
+import { autoFetchResult, LIGA_CHILENA_2026 } from '../lib/sportsApi'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { SPORTS, AVATARS, getSport, fmtDate, fmtMoney, calcPoints, MONTHS_ES } from '../constants'
@@ -192,6 +192,58 @@ function AdminEventSuggest({ notify, onCreated }) {
   const [adding, setAdding]     = useState({})
   const [added, setAdded]       = useState({})
 
+  const [subTab, setSubTab] = useState('api')   // 'api' | 'chile'
+  const [chileAdded, setChileAdded] = useState({})
+  const [chileAdding, setChileAdding] = useState({})
+
+  const addChileEvent = async (partido, fecha) => {
+    const key = `${partido.home}_${partido.date}`
+    setChileAdding(p => ({ ...p, [key]: true }))
+    const startDt = new Date(`${partido.date}T${partido.time}:00`)
+    const closeDt = new Date(startDt.getTime() - 5 * 60 * 1000)
+    const { error } = await supabase.from('events').insert({
+      sport: 'liga_chilena',
+      home: partido.home,
+      away: partido.away,
+      event_date: partido.date,
+      event_time: partido.time + ':00',
+      close_at: closeDt.toISOString(),
+      note: `Fecha ${fecha}`,
+      event_month: startDt.getMonth() + 1,
+      event_year: startDt.getFullYear(),
+      status: 'upcoming',
+    })
+    if (!error) {
+      setChileAdded(p => ({ ...p, [key]: true }))
+      notify(`✅ ${partido.home} vs ${partido.away}`)
+      onCreated()
+    }
+    setChileAdding(p => ({ ...p, [key]: false }))
+  }
+
+  const addFechaCompleta = async (fechaObj) => {
+    let count = 0
+    for (const p of fechaObj.partidos) {
+      const key = `${p.home}_${p.date}`
+      if (chileAdded[key]) continue
+      const startDt = new Date(`${p.date}T${p.time}:00`)
+      const closeDt = new Date(startDt.getTime() - 5 * 60 * 1000)
+      await supabase.from('events').insert({
+        sport: 'liga_chilena', home: p.home, away: p.away,
+        event_date: p.date, event_time: p.time + ':00',
+        close_at: closeDt.toISOString(),
+        note: `Fecha ${fechaObj.fecha}`,
+        event_month: startDt.getMonth() + 1,
+        event_year: startDt.getFullYear(),
+        status: 'upcoming',
+      })
+      setChileAdded(prev => ({ ...prev, [key]: true }))
+      count++
+    }
+    if (count) { notify(`✅ ${count} partidos de Fecha ${fechaObj.fecha} agregados`); onCreated() }
+    else notify('Ya estaban todos agregados', 'in')
+  }
+
   const fetch_ = async () => {
     setLoading(true)
     setSuggs([])
@@ -250,18 +302,91 @@ function AdminEventSuggest({ notify, onCreated }) {
     setAdding(p => ({ ...p, [key]: false }))
   }
 
-  const sp = getSport(sport)
-
   return (
     <div className="fstack">
-      <div style={{ display: 'flex', gap: 8 }}>
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 2 }}>
+        <button
+          className={`btn ${subTab === 'chile' ? 'bt-ol-gd' : 'bt-ol-sm'}`}
+          onClick={() => setSubTab('chile')}
+          style={{ flex: 1 }}
+        >
+          🇨🇱 Liga Chilena 2026
+        </button>
+        <button
+          className={`btn ${subTab === 'api' ? 'bt-ol-gd' : 'bt-ol-sm'}`}
+          onClick={() => setSubTab('api')}
+          style={{ flex: 1 }}
+        >
+          🌐 Otras Ligas (API)
+        </button>
+      </div>
+
+      {/* LIGA CHILENA TAB */}
+      {subTab === 'chile' && (
+        <div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', fontFamily: "'Barlow Condensed',sans-serif", letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' }}>
+            Fixture oficial ANFP 2026 — carga una fecha completa con un click
+          </div>
+          {LIGA_CHILENA_2026.map(fechaObj => {
+            const allAdded = fechaObj.partidos.every(p => chileAdded[`${p.home}_${p.date}`])
+            return (
+              <div key={fechaObj.fecha} style={{ background: '#1E1E1E', border: '1px solid #2A2A2A', borderRadius: 4, padding: '10px 12px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, color: '#FFE418', letterSpacing: 1 }}>
+                    FECHA {fechaObj.fecha}
+                    <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: 'rgba(255,255,255,.3)', marginLeft: 8, fontWeight: 400 }}>
+                      {fechaObj.partidos[0].date} → {fechaObj.partidos[fechaObj.partidos.length-1].date}
+                    </span>
+                  </div>
+                  {allAdded
+                    ? <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: '#28FFBB' }}>✓ Todos agregados</span>
+                    : <button className="btn bt-gd-sm" onClick={() => addFechaCompleta(fechaObj)}>
+                        + Cargar fecha completa
+                      </button>
+                  }
+                </div>
+                {fechaObj.partidos.map(p => {
+                  const key = `${p.home}_${p.date}`
+                  const done = chileAdded[key]
+                  return (
+                    <div key={key} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '5px 0',
+                      borderBottom: '1px solid #252525',
+                      opacity: done ? .6 : 1,
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: 12, color: done ? '#28FFBB' : '#CCC' }}>
+                          {p.home} vs {p.away}
+                        </div>
+                        <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: 'rgba(255,255,255,.28)' }}>
+                          {p.date} · {p.time}h
+                        </div>
+                      </div>
+                      {done
+                        ? <span style={{ fontSize: 11, color: '#28FFBB' }}>✓</span>
+                        : <button className="btn bt-ol-sm" style={{ fontSize: 10 }} onClick={() => addChileEvent(p, fechaObj.fecha)} disabled={chileAdding[key]}>
+                            {chileAdding[key] ? '...' : '+ Add'}
+                          </button>
+                      }
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* API TAB */}
+      {subTab === 'api' && <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ flex: 1 }}>
           <label className="fl-lbl">Liga</label>
           <select className="sel" value={sport} onChange={e => { setSport(e.target.value); setSuggs([]) }}>
             {[
               ['champions',   '⭐ Champions League'],
               ['premier',     '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League'],
-              ['liga_chilena','🇨🇱 Liga Chilena'],
               ['nba',         '🏀 NBA'],
               ['nfl',         '🏈 NFL'],
               ['mundial',     '🌍 Mundial FIFA'],
@@ -270,10 +395,10 @@ function AdminEventSuggest({ notify, onCreated }) {
         </div>
         <div style={{ alignSelf: 'flex-end' }}>
           <button className="btn bt-ol-gd" onClick={fetch_} disabled={loading} style={{ padding: '9px 14px', fontSize: 12 }}>
-            {loading ? '⏳ Buscando...' : '🔍 Buscar eventos'}
+            {loading ? '⏳...' : '🔍 Buscar'}
           </button>
         </div>
-      </div>
+      </div>}
 
       {suggestions.length > 0 && (
         <div style={{ marginTop: 4 }}>
