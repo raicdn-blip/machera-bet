@@ -6,6 +6,7 @@ import EventsPage    from './pages/Events'
 import MyBetsPage    from './pages/MyBets'
 import LeaderboardPage from './pages/Leaderboard'
 import AdminPage     from './pages/Admin'
+import ProfilePage   from './pages/Profile'
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -62,6 +63,11 @@ export default function App() {
     setPage('home')
   }
 
+  const updateUser = (u) => {
+    setUser(u)
+    localStorage.setItem('mb_user', JSON.stringify(u))
+  }
+
   const logout = () => {
     localStorage.removeItem('mb_user')
     setUser(null)
@@ -109,6 +115,7 @@ export default function App() {
             {page === 'events'      && <EventsPage      user={user} notify={notify} />}
             {page === 'mybets'      && <MyBetsPage      user={user} />}
             {page === 'leaderboard' && <LeaderboardPage user={user} />}
+            {page === 'profile'     && <ProfilePage     user={user} onUserUpdate={updateUser} notify={notify} />}
             {page === 'admin' && user.is_admin && <AdminPage notify={notify} />}
           </main>
 
@@ -118,6 +125,7 @@ export default function App() {
               ['events',      '🎯', 'Eventos'],
               ['mybets',      '📋', 'Mis Apuestas'],
               ['leaderboard', '🏆', 'Tabla'],
+              ['profile',     '👤', 'Perfil'],
               ...(user.is_admin ? [['admin', '⚙️', 'Admin']] : []),
             ].map(([v, ico, lbl]) => (
               <button
