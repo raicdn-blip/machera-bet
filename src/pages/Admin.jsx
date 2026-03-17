@@ -908,7 +908,7 @@ function AdminMonthly({ notify }) {
     return () => { mounted = false }
   }, [curMonth, curYear])
 
-  const pot = playerCount * 10000
+  const pot = playerCount * 5000
 
   const closeMonth = async () => {
     if (!window.confirm(`¿Cerrar ${MONTHS_ES[curMonth - 1]} ${curYear} y distribuir premios?`)) return

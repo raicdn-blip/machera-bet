@@ -207,7 +207,7 @@ export default function HomePage({ user, setPage }) {
     return () => { mounted = false }
   }, [user.id, curMonth, curYear])
 
-  const pot = playerCount * 10000
+  const pot = playerCount * 5000
 
   if (loading) return (
     <div className="empty" style={{ paddingTop: 60 }}>Cargando...</div>
@@ -245,7 +245,7 @@ export default function HomePage({ user, setPage }) {
             fontSize: 10,
             color: '#333',
             marginTop: 2,
-          }}>{playerCount} jugadores × $10.000</div>
+          }}>{playerCount} jugadores × $5.000</div>
         </div>
         <div className="prize-dist">
           <div className="prize-row">🥇 1º <span>{fmtMoney(pot * 0.5)}</span></div>
